@@ -1,0 +1,36 @@
+name: Flask CI-CD
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  test-and-deploy:
+     runs-on: ubuntu-latest
+
+     steps:
+       - name: Checkout repository
+         uses: actions/checkout@v4
+         
+       - name: List all files
+         run: |
+             ls -a
+             
+       - name: Copy files to and SSH into ec2
+         run: |
+            mkdir -p ~/.ssh
+            echo "${{ secrets.SSH_KEY }}" > ~/.ssh/ec2-key.pem
+            chmod 600 ~/.ssh/ec2-key.pem
+            ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+            scp -i ~/.ssh/ec2-key.pem app.py requirements.txt build.sh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/myflaskapp/
+            ssh -i ~/.ssh/ec2-key.pem ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            set -e
+            echo "I'm inside aws ec2 instance. WOOHOO!!!!"
+            echo "export FLASK_PORT=5000" >> ~/.bashrc
+            cd  ~/myflaskapp/
+            chmod +x build.sh
+            ./build.sh
+            pkill -f "python app.py" || true
+            nohup venv/bin/python app.py > app.log 2>&1 &
+            EOF
